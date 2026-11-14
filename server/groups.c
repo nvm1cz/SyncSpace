@@ -66,3 +66,52 @@ int group_create(int owner_id, const char *name)
     pthread_mutex_unlock(&group_lock);
     return id;
 }
+
+int group_role(int user_id, int group_id)
+{
+    pthread_mutex_lock(&group_lock);
+
+    for (int i = 0; i < group_count; i++)
+    {
+        if (groups[i].id == group_id)
+        {
+            int role = groups[i].owner_id == user_id ? 2 : 0;
+            pthread_mutex_unlock(&group_lock);
+            return role;
+        }
+    }
+
+    pthread_mutex_unlock(&group_lock);
+    return -1;
+}
+
+int group_list(int user_id, GroupInfo *out, int capacity)
+{
+    if (user_id <= 0 || capacity < 0 ||
+        (capacity > 0 && out == NULL))
+        return SS_ERR_INVALID;
+
+    pthread_mutex_lock(&group_lock);
+
+    int count = 0;
+
+    for (int i = 0; i < group_count; i++)
+    {
+        if (groups[i].owner_id != user_id)
+            continue;
+
+        if (count >= capacity)
+        {
+            pthread_mutex_unlock(&group_lock);
+            return SS_ERR_INVALID;
+        }
+
+        out[count].id = groups[i].id;
+        strcpy(out[count].name, groups[i].name);
+        out[count].role = 2;
+        count++;
+    }
+
+    pthread_mutex_unlock(&group_lock);
+    return count;
+}
