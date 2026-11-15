@@ -1,0 +1,6 @@
+build/
+storage/
+data/
+*.o
+.DS_Store
+plan/
