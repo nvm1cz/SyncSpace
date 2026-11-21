@@ -1,0 +1,40 @@
+{
+    "tasks": [
+        {
+            "type": "process",
+            "label": "SyncSpace: build client and server",
+            "command": "make",
+            "args": ["all"],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "detail": "Builds both executables with shared networking code and headers."
+        },
+        {
+            "type": "process",
+            "label": "SyncSpace: run server",
+            "command": "${workspaceFolder}/build/server",
+            "dependsOn": "SyncSpace: build client and server",
+            "options": {"cwd": "${workspaceFolder}"},
+            "problemMatcher": [],
+            "presentation": {"panel": "dedicated", "focus": true}
+        },
+        {
+            "type": "process",
+            "label": "SyncSpace: run client",
+            "command": "${workspaceFolder}/build/client",
+            "dependsOn": "SyncSpace: build client and server",
+            "options": {"cwd": "${workspaceFolder}"},
+            "problemMatcher": [],
+            "presentation": {"panel": "dedicated", "focus": true}
+        }
+    ],
+    "version": "2.0.0"
+}
