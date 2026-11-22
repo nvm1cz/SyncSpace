@@ -249,3 +249,31 @@ int transfer_recv_to_fd(int sock, int fd, unsigned long long size)
 
     return 0;
 }
+
+int transfer_send_from_fd(int sock, int fd, unsigned long long size)
+{
+    char buf[TRANSFER_CHUNK_SIZE];
+    unsigned long long remaining = size;
+
+    while (remaining > 0) {
+        size_t chunk = (remaining > sizeof(buf))
+                           ? sizeof(buf)
+                           : (size_t)remaining;
+        ssize_t n = read(fd, buf, chunk);
+        if (n < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            return -1;
+        }
+        if (n == 0) {
+            return -1;
+        }
+        if (send_all(sock, buf, (size_t)n) < 0) {
+            return -1;
+        }
+        remaining -= (unsigned long long)n;
+    }
+
+    return 0;
+}

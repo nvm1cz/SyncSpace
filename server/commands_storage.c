@@ -3,6 +3,7 @@
 #include "net.h"
 #include "transfer.h"
 
+#include <errno.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -169,8 +170,49 @@ int cmd_upload(int sock, int uid, int gid, const char *name,
 
 int cmd_download(int sock, int uid, int gid, const char *name)
 {
-    (void)uid;
-    (void)gid;
-    (void)name;
-    return send_line(sock, "ERR|NOT_IMPLEMENTED\n");
+    int passed = 0;
+    if (check_group_access(sock, uid, gid, &passed) < 0) {
+        return -1;
+    }
+    if (!passed) {
+        return 0;
+    }
+
+    if (!transfer_validate_filename(name)) {
+        return send_line(sock, "ERR|BAD_REQUEST\n");
+    }
+
+    int fd = -1;
+    unsigned long long size = 0;
+    errno = 0;
+    int rc = transfer_open_download(gid, name, &fd, &size);
+    if (rc != 0) {
+        if (rc == SS_ERR_INVALID) {
+            return send_line(sock, "ERR|BAD_REQUEST\n");
+        }
+        if (errno == ENOENT) {
+            return send_line(sock, "ERR|NOT_FOUND\n");
+        }
+        return send_line(sock, "ERR|IO\n");
+    }
+
+    char header[64];
+    int hlen = snprintf(header, sizeof(header), "FILE|%llu\n", size);
+    if (hlen < 0 || (size_t)hlen >= sizeof(header)) {
+        close(fd);
+        return send_line(sock, "ERR|IO\n");
+    }
+
+    if (send_all(sock, header, (size_t)hlen) < 0) {
+        close(fd);
+        return -1;
+    }
+
+    rc = transfer_send_from_fd(sock, fd, size);
+    close(fd);
+    if (rc != 0) {
+        return -1;
+    }
+
+    return 0;
 }
