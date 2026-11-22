@@ -2,6 +2,7 @@
 
 #include "transfer.h"
 #include "api.h"
+#include "net.h"
 
 #include <ctype.h>
 #include <errno.h>
@@ -209,3 +210,42 @@ int transfer_open_download(int group_id, const char *name,
     return 0;
 }
 
+static int write_all_fd(int fd, const char *buf, size_t len)
+{
+    size_t written = 0;
+    while (written < len) {
+        ssize_t n = write(fd, buf + written, len - written);
+        if (n < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            return -1;
+        }
+        if (n == 0) {
+            return -1;
+        }
+        written += (size_t)n;
+    }
+    return 0;
+}
+
+int transfer_recv_to_fd(int sock, int fd, unsigned long long size)
+{
+    char buf[TRANSFER_CHUNK_SIZE];
+    unsigned long long remaining = size;
+
+    while (remaining > 0) {
+        size_t chunk = (remaining > sizeof(buf))
+                           ? sizeof(buf)
+                           : (size_t)remaining;
+        if (recv_exact(sock, buf, chunk) != 1) {
+            return -1;
+        }
+        if (write_all_fd(fd, buf, chunk) < 0) {
+            return SS_ERR_IO;
+        }
+        remaining -= chunk;
+    }
+
+    return 0;
+}

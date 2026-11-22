@@ -62,5 +62,10 @@ int transfer_open_download(int group_id, const char *name,
                            int *fd_out, unsigned long long *size_out);
 
 /*
+ * Receive exactly `size` raw bytes from `sock` in chunks of up to 64 KiB
+ * and write them all into `fd`.
+ * Returns 0 on success, -1 on socket EOF/error, SS_ERR_IO on local disk write error.
+ */
+int transfer_recv_to_fd(int sock, int fd, unsigned long long size);
 
 #endif
