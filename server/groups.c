@@ -325,3 +325,49 @@ int group_list_members(int group_id, int *out, int capacity)
     pthread_mutex_unlock(&group_lock);
     return count;
 }
+
+int group_list_requests(int owner_id, int group_id, int *out, int capacity)
+{
+    if (owner_id <= 0 || group_id <= 0 ||
+        out == NULL || capacity <= 0)
+        return SS_ERR_INVALID;
+
+    pthread_mutex_lock(&group_lock);
+
+    int is_owner = 0;
+
+    for (int i = 0; i < group_count; i++)
+    {
+        if (groups[i].id == group_id &&
+            groups[i].owner_id == owner_id)
+        {
+            is_owner = 1;
+            break;
+        }
+    }
+
+    if (!is_owner)
+    {
+        pthread_mutex_unlock(&group_lock);
+        return SS_ERR_INVALID;
+    }
+
+    int count = 0;
+
+    for (int i = 0; i < request_count; i++)
+    {
+        if (requests[i].group_id == group_id)
+        {
+            if (count >= capacity)
+            {
+                pthread_mutex_unlock(&group_lock);
+                return SS_ERR_FULL;
+            }
+
+            out[count++] = requests[i].user_id;
+        }
+    }
+
+    pthread_mutex_unlock(&group_lock);
+    return count;
+}

@@ -43,7 +43,30 @@ int main(void)
 
     assert(group_list_members(1, member_ids, 1) == SS_ERR_FULL);
     assert(group_list_members(999, member_ids, 10) == SS_ERR_INVALID);
-    
+
+
+    int pending[10];
+
+    assert(group_list_requests(1, 1, pending, 10) == 0);
+
+    assert(group_request_join(3, 1) == 0);
+    assert(group_request_join(4, 1) == 0);
+
+    assert(group_list_requests(2, 1, pending, 10) == SS_ERR_INVALID);
+    assert(group_list_requests(1, 999, pending, 10) == SS_ERR_INVALID);
+
+    assert(group_list_requests(1, 1, pending, 1) == SS_ERR_FULL);
+
+    assert(group_list_requests(1, 1, pending, 10) == 2);
+    assert(pending[0] == 3);
+    assert(pending[1] == 4);
+
+    assert(group_approve_join(1, 1, 3) == 0);
+
+    assert(group_list_requests(1, 1, pending, 10) == 1);
+    assert(pending[0] == 4);
+    assert(group_role(3, 1) == 1);
+
     printf("GROUP MEMBERSHIP TEST PASS\n");
     return 0;
 }
