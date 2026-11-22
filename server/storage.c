@@ -1,3 +1,5 @@
+#define _POSIX_C_SOURCE 200809L
+
 #include "api.h"
 
 #include <stdio.h>
@@ -39,7 +41,13 @@ static int ensure_parent_dirs(void)
     return 0;
 }
 
-// Validate folder/file name: 1-64 chars [A-Za-z0-9._-], reject . and ..
+static int has_part_suffix(const char *name)
+{
+    size_t len = strlen(name);
+    return (len >= 5 && strcmp(name + len - 5, ".part") == 0);
+}
+
+// Validate folder/file name: 1-64 chars [A-Za-z0-9._-], reject ., .., and *.part
 static int validate_name(const char *name)
 {
     if (name == NULL) {
@@ -50,6 +58,9 @@ static int validate_name(const char *name)
         return 0;
     }
     if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0) {
+        return 0;
+    }
+    if (has_part_suffix(name)) {
         return 0;
     }
     for (size_t i = 0; i < len; i++) {
@@ -155,6 +166,10 @@ int storage_list(int group_id, const char *rel, FileInfo *out, int capacity)
     struct dirent *entry;
     while ((entry = readdir(dir)) != NULL) {
         if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+            continue;
+        }
+
+        if (has_part_suffix(entry->d_name)) {
             continue;
         }
 

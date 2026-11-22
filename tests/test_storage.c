@@ -36,11 +36,12 @@ static void test_path_safety(void)
     assert(storage_mkdir(gid, ".") == SS_ERR_INVALID);
     assert(storage_mkdir(gid, "..") == SS_ERR_INVALID);
 
-    // Reject invalid characters: slash, backslash, pipe, space
+    // Reject invalid characters: slash, backslash, pipe, space, and reserved .part suffix
     assert(storage_mkdir(gid, "a/b") == SS_ERR_INVALID);
     assert(storage_mkdir(gid, "a\\b") == SS_ERR_INVALID);
     assert(storage_mkdir(gid, "bad|name") == SS_ERR_INVALID);
     assert(storage_mkdir(gid, "bad name") == SS_ERR_INVALID);
+    assert(storage_mkdir(gid, "temp.part") == SS_ERR_INVALID);
 
     // Reject empty name and names longer than 64 characters
     assert(storage_mkdir(gid, "") == SS_ERR_INVALID);
@@ -82,9 +83,18 @@ static void test_listing_and_capacity(void)
     fputs(content, fp);
     fclose(fp);
 
-    // List gid: contains docs (dir), sub_dir-1.0 (dir), test.txt (file)
+    // Create a temporary .part file to verify storage_list hides .part files
+    char part_path[512];
+    snprintf(part_path, sizeof(part_path), "storage/groups/%d/uploading.txt.part", gid);
+    FILE *pfp = fopen(part_path, "w");
+    assert(pfp != NULL);
+    fputs("partial", pfp);
+    fclose(pfp);
+
+    // List gid: contains docs (dir), sub_dir-1.0 (dir), test.txt (file); uploading.txt.part is hidden
     int n = storage_list(gid, ".", items, 10);
     assert(n == 3);
+    unlink(part_path);
 
     int found_docs = 0;
     int found_subdir = 0;
