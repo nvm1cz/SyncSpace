@@ -7,7 +7,7 @@ GROUPS = server/groups.c
 STORAGE = server/storage.c
 TRANSFER = server/transfer.c server/commands_storage.c
 AUTH = server/auth.c
-SERVER = server/main.c server/commands_groups.c $(AUTH) $(GROUPS) $(STORAGE) $(TRANSFER) $(NET)
+SERVER = server/main.c server/commands_groups.c server/persistence.c $(AUTH) $(GROUPS) $(STORAGE) $(TRANSFER) $(NET)
 HEADERS = $(wildcard common/*.h server/*.h)
 
 GROUP_TESTS = build/test_groups build/test_group_transaction build/test_group_members
@@ -23,7 +23,7 @@ build:
 	mkdir -p build
 
 build/server: $(SERVER) $(HEADERS) | build
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(filter %.c,$^) -pthread -o $@
+	$(CC) $(CPPFLAGS) $(CFLAGS) -DSYNCSPACE_PERSISTENT $(filter %.c,$^) -pthread -lsqlite3 -o $@
 
 build/client: client/main.c $(NET) common/commands.h common/net.h | build
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(filter %.c,$^) -o $@

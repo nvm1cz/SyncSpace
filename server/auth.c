@@ -1,4 +1,7 @@
 #include "api.h"
+#ifdef SYNCSPACE_PERSISTENT
+#include "persistence.h"
+#endif
 
 #include <pthread.h>
 #include <string.h>
@@ -52,6 +55,12 @@ int auth_register(const char *username, const char *password)
     } else if (account_count == (int)(sizeof(accounts) / sizeof(accounts[0]))) {
         result = SS_ERR_FULL;
     } else {
+#ifdef SYNCSPACE_PERSISTENT
+        if (persistence_add_account(account_count + 1, username, password) != 0) {
+            pthread_mutex_unlock(&account_lock);
+            return SS_ERR_IO;
+        }
+#endif
         strcpy(accounts[account_count].username, username);
         strcpy(accounts[account_count].password, password);
         result = ++account_count;
@@ -72,3 +81,15 @@ int auth_login(const char *username, const char *password)
     pthread_mutex_unlock(&account_lock);
     return id;
 }
+
+#ifdef SYNCSPACE_PERSISTENT
+int auth_restore(int id, const char *username, const char *password)
+{
+    if (!valid_credentials(username, password) || id != account_count + 1 || id > 100)
+        return -1;
+    strcpy(accounts[account_count].username, username);
+    strcpy(accounts[account_count].password, password);
+    account_count++;
+    return 0;
+}
+#endif

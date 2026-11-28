@@ -113,19 +113,21 @@ def test_cli(port, directory):
 
 
 def main():
-    with TemporaryDirectory() as temporary:
-        directory = Path(temporary)
-        with launch_server(directory) as (port, connect):
-            # Exercise the real group creation rollback before a successful create.
-            (directory / "storage").touch()
+    # Preserve the old group-create rollback regression in isolated storage.
+    with TemporaryDirectory() as rollback_tmp:
+        rollback_dir = Path(rollback_tmp)
+        with launch_server(rollback_dir) as (port, connect):
+            (rollback_dir / "storage/groups").touch()
             with connect() as sock:
                 request(sock, "REGISTER|probe|pass", "OK|REGISTER|1")
                 request(sock, "LOGIN|probe|pass", "OK|LOGIN|1")
                 request(sock, "CREATE_GROUP|rollback", "ERR|IO")
                 request(sock, "LIST_GROUPS", "OK|GROUPS|0")
                 assert line(sock) == b"END\n"
-            (directory / "storage").unlink()
-            # IDs and accounts reset with the next server process.
+            (rollback_dir / "storage/groups").unlink()
+
+    with TemporaryDirectory() as temporary:
+        directory = Path(temporary)
         with launch_server(directory) as (port, connect):
             test_sessions(connect)
             test_cli(port, directory)
@@ -134,12 +136,41 @@ def main():
         assert (group_dir / "second.bin").read_bytes() == b"B" * 65543
         assert not (group_dir / "incomplete.bin").exists()
         assert not list(group_dir.glob("*.part"))
-        restart = subprocess.run(
-            [str(ROOT / "build/server"), str(port)], cwd=directory,
-            capture_output=True, text=True, timeout=3,
-        )
-        assert restart.returncode != 0 and "Existing group data" in restart.stderr
-    print("WEEK 2 E2E TEST PASS")
+        assert (directory / "storage/syncspace.db").is_file()
+
+        # A real restart in the SAME directory must keep account IDs,
+        # approved group membership, pending requests and uploaded bytes.
+        with launch_server(directory) as (port, connect):
+            with connect() as leader, connect() as member, connect() as extra:
+                request(leader, "LOGIN|leader|first pass", "OK|LOGIN|1")
+                request(member, "LOGIN|member|second", "OK|LOGIN|2")
+                request(member, "LIST_GROUPS", "OK|GROUPS|1")
+                assert [line(member), line(member)] == [b"GROUP|1|team|1\n", b"END\n"]
+                request(member, "LIST_MEMBERS|1", "OK|MEMBERS|2")
+                assert [line(member), line(member), line(member)] == [
+                    b"MEMBER|1|2\n", b"MEMBER|2|1\n", b"END\n"]
+                request(member, "REQUEST_JOIN|1", "ERR|EXISTS")
+                request(member, "DOWNLOAD|1|first.bin", "FILE|65543")
+                data = b""
+                while len(data) < 65543:
+                    fragment = member.recv(65543 - len(data))
+                    assert fragment
+                    data += fragment
+                assert data == b"A" * 65543
+                request(extra, "REGISTER|third|pass", "OK|REGISTER|3")
+                request(extra, "LOGIN|third|pass", "OK|LOGIN|3")
+                request(extra, "REQUEST_JOIN|1", "OK|REQUESTED")
+
+        with launch_server(directory) as (port, connect):
+            with connect() as leader, connect() as extra:
+                request(leader, "LOGIN|leader|first pass", "OK|LOGIN|1")
+                request(extra, "LOGIN|third|pass", "OK|LOGIN|3")
+                request(leader, "LIST_REQUESTS|1", "OK|REQUESTS|1")
+                assert [line(leader), line(leader)] == [b"REQUEST|3\n", b"END\n"]
+                request(leader, "APPROVE_JOIN|1|3", "OK|APPROVED")
+                request(extra, "LIST_GROUPS", "OK|GROUPS|1")
+                assert [line(extra), line(extra)] == [b"GROUP|1|team|1\n", b"END\n"]
+    print("WEEK 2 E2E + RESTART PERSISTENCE TEST PASS")
 
 
 if __name__ == "__main__":

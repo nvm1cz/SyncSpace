@@ -2,6 +2,7 @@
 #include "../common/commands.h"
 #include "commands_groups.h"
 #include "commands_storage.h"
+#include "persistence.h"
 #include "../common/net.h"
 
 #include <arpa/inet.h>
@@ -87,6 +88,7 @@ static int authenticate(int sock, int *uid, Command command, char **fields)
         if (command == LOGIN) return reply(sock, "ERR|INVALID_CREDENTIALS\n");
         if (result == SS_ERR_EXISTS) return reply(sock, "ERR|EXISTS\n");
         if (result == SS_ERR_FULL) return reply(sock, "ERR|FULL\n");
+        if (result == SS_ERR_IO) return reply(sock, "ERR|IO\n");
         return reply(sock, SS_BAD_REQUEST);
     }
 
@@ -177,26 +179,6 @@ static void *handle_client(void *arg)
     return NULL;
 }
 
-/* Account and group IDs reset at startup. Old files cannot be assigned new owners. */
-static int storage_is_fresh(void)
-{
-    DIR *groups = opendir("storage/groups");
-    if (groups == NULL) return errno == ENOENT;
-
-    int fresh = 1;
-    errno = 0;
-    struct dirent *entry;
-    while ((entry = readdir(groups)) != NULL) {
-        if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
-            fresh = 0;
-            break;
-        }
-    }
-    if (errno != 0) fresh = 0;
-    closedir(groups);
-    return fresh;
-}
-
 int main(int argc, char **argv)
 {
     long port = SYNCSPACE_PORT;
@@ -214,10 +196,7 @@ int main(int argc, char **argv)
         }
     }
 
-    if (!storage_is_fresh()) {
-        fputs("Start the server in a fresh working directory. Existing group data cannot be reused.\n", stderr);
-        return EXIT_FAILURE;
-    }
+    if (persistence_init() != 0) return EXIT_FAILURE;
 
     /* A disconnected peer must not terminate the server on macOS or Linux. */
     signal(SIGPIPE, SIG_IGN);
