@@ -27,9 +27,8 @@ fragmentation and combined requests.
 
 Every list has exactly `N` rows, including zero rows for an empty list.
 Role `1` means member and role `2` means leader. File types are `D` for a
-directory (size zero) and `F` for a file. The current Groups implementation
-includes owned groups in `LIST_GROUPS`. Approved members can use the group ID
-to access member and file commands. Listing joined groups is pending in Groups.
+directory (size zero) and `F` for a file. The Groups implementation lists both owned and approved joined groups in
+`LIST_GROUPS`; roles and IDs survive server restarts through SQLite.
 
 IDs are positive decimal integers within `INT_MAX`. Usernames are
 1–31 characters from `[A-Za-z0-9_-]`. Passwords are 1–128 printable ASCII

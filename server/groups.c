@@ -1,4 +1,9 @@
 #include "../common/api.h"
+#ifdef SYNCSPACE_PERSISTENT
+#include "persistence.h"
+#include <stdio.h>
+#include <unistd.h>
+#endif
 #include <pthread.h>
 #include <string.h>
 
@@ -70,13 +75,30 @@ int group_create(int owner_id, const char *name)
         return SS_ERR_FULL;
     }
 
+#ifdef SYNCSPACE_PERSISTENT
     int id = group_count + 1;
+    if (persistence_group_path_is_unused(id) != 0) {
+        pthread_mutex_unlock(&group_lock);
+        return SS_ERR_IO;
+    }
+#else
+    int id = group_count + 1;
+#endif
     if (storage_create_group(id) != 0)
     {
     pthread_mutex_unlock(&group_lock);
     return SS_ERR_IO;
     }
 
+#ifdef SYNCSPACE_PERSISTENT
+    if (persistence_add_group(id, owner_id, name) != 0) {
+        char path[128];
+        snprintf(path, sizeof(path), "storage/groups/%d", id);
+        rmdir(path); /* best effort: newly created empty directory */
+        pthread_mutex_unlock(&group_lock);
+        return SS_ERR_IO;
+    }
+#endif
     groups[group_count].id = id;
     groups[group_count].owner_id = owner_id;
     strcpy(groups[group_count].name, name);
@@ -226,6 +248,12 @@ int group_request_join(int user_id, int group_id)
         return SS_ERR_FULL;
     }
 
+#ifdef SYNCSPACE_PERSISTENT
+    if (persistence_add_request(group_id, user_id) != 0) {
+        pthread_mutex_unlock(&group_lock);
+        return SS_ERR_IO;
+    }
+#endif
     requests[request_count].user_id = user_id;
     requests[request_count].group_id = group_id;
     request_count++;
@@ -282,6 +310,12 @@ int group_approve_join(int owner_id, int group_id, int user_id)
         return SS_ERR_FULL;
     }
 
+#ifdef SYNCSPACE_PERSISTENT
+    if (persistence_approve_request(group_id, user_id) != 0) {
+        pthread_mutex_unlock(&group_lock);
+        return SS_ERR_IO;
+    }
+#endif
     members[member_count].user_id = user_id;
     members[member_count].group_id = group_id;
     member_count++;
@@ -384,3 +418,36 @@ int group_list_requests(int owner_id, int group_id, int *out, int capacity)
     pthread_mutex_unlock(&group_lock);
     return count;
 }
+
+#ifdef SYNCSPACE_PERSISTENT
+int group_restore(int id, int owner_id, const char *name)
+{
+    if (id != group_count + 1 || id > 100 || owner_id <= 0 || !valid_name(name))
+        return -1;
+    groups[group_count].id = id;
+    groups[group_count].owner_id = owner_id;
+    strcpy(groups[group_count].name, name);
+    group_count++;
+    return 0;
+}
+
+int group_restore_member(int group_id, int user_id)
+{
+    if (group_id <= 0 || group_id > group_count || user_id <= 0 || member_count >= 1000)
+        return -1;
+    members[member_count].group_id = group_id;
+    members[member_count].user_id = user_id;
+    member_count++;
+    return 0;
+}
+
+int group_restore_request(int group_id, int user_id)
+{
+    if (group_id <= 0 || group_id > group_count || user_id <= 0 || request_count >= 1000)
+        return -1;
+    requests[request_count].group_id = group_id;
+    requests[request_count].user_id = user_id;
+    request_count++;
+    return 0;
+}
+#endif

@@ -46,14 +46,18 @@ are entered without whitespace. Downloads require a new local filename.
 To admit another user, have them register, log in and send
 `REQUEST_JOIN|1`. As the leader, run `LIST_REQUESTS|1`, then
 `APPROVE_JOIN|1|<user_id>`. Both users can then use `LIST_MEMBERS|1` and
-`LIST_FILES|1|.`. At present `LIST_GROUPS` shows owned groups. Reporting
-joined groups is pending in the Groups module.
+`LIST_FILES|1|.`. Approved members also see joined groups through `LIST_GROUPS`.
 
-Use disposable credentials and test data on localhost or a trusted LAN.
-The protocol sends passwords as plaintext. Accounts and group membership live
-in memory. Files live under `storage/groups` relative to the server's working
-directory. For a new session after creating groups, start the server from a
-fresh working directory so old files cannot be assigned to new accounts.
+Account, group, membership and join-request records now persist in
+`storage/syncspace.db` (SQLite); uploaded files remain in `storage/groups/`.
+Restart the server **from the same working directory** to preserve data.
+On startup, old group files with no database are refused rather than silently
+reassigned. Back up and migrate those legacy files separately.
+
+**Security limitations:** passwords currently remain plaintext in SQLite and
+on the TCP connection. Use disposable test accounts and localhost/trusted LAN
+only. Before exposing a port on AWS, add password hashing and transport security.
+Keep the SQLite database and file directory together on durable EBS storage.
 
 ## Tests
 
