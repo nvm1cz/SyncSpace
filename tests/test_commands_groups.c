@@ -25,23 +25,23 @@ int main(void)
 
     // 2. Xin tham gia
     assert(cmd_request_join(s[0], 2, 1) == 0);
-    check(s[1], "OK|REQUEST_JOIN\n");
+    check(s[1], "OK|REQUESTED\n");
 
     // 3. Xem yeu cau cho duyet
     assert(cmd_list_requests(s[0], 1, 1) == 0);
     check(s[1], "OK|REQUESTS|1\n");
-    check(s[1], "USER|2\n");
+    check(s[1], "REQUEST|2\n");
     check(s[1], "END\n");
 
     // 4. Duyet thanh vien
     assert(cmd_approve_join(s[0], 1, 1, 2) == 0);
-    check(s[1], "OK|APPROVE_JOIN\n");
+    check(s[1], "OK|APPROVED\n");
 
     // 5. Xem danh sach thanh vien
     assert(cmd_list_members(s[0], 2, 1) == 0);
     check(s[1], "OK|MEMBERS|2\n");
-    check(s[1], "USER|1\n");
-    check(s[1], "USER|2\n");
+    check(s[1], "MEMBER|1|2\n");
+    check(s[1], "MEMBER|2|1\n");
     check(s[1], "END\n");
 
     // 6. Thanh vien xem nhom da tham gia

@@ -1,131 +1,124 @@
-
+#include "commands_groups.h"
 #include "api.h"
+#include "commands.h"
 #include "groups_ext.h"
 #include "net.h"
+
 #include <stdio.h>
-#include <string.h>
 
-static int reply(int sock, const char *s)
+static int reply(int sock, const char *line)
 {
-    return send_all(sock, s, strlen(s));
+    return send_all(sock, line, strlen(line));
 }
 
-static int result(int sock, int rc, const char *success)
+static int group_error(int sock, int code)
 {
-    if (rc == 0) return reply(sock, success);
-    if (rc == SS_ERR_EXISTS) return reply(sock, "ERR|EXISTS\n");
-    if (rc == SS_ERR_FULL) return reply(sock, "ERR|FULL\n");
-    if (rc == SS_ERR_IO) return reply(sock, "ERR|IO\n");
-    return reply(sock, "ERR|BAD_REQUEST\n");
+    switch (code) {
+        case SS_ERR_EXISTS: return reply(sock, "ERR|EXISTS\n");
+        case SS_ERR_FULL: return reply(sock, "ERR|FULL\n");
+        case SS_ERR_INVALID: return reply(sock, SS_BAD_REQUEST);
+        default: return reply(sock, "ERR|IO\n");
+    }
 }
 
-// Tao nhom
+static const char *access_error(int uid, int gid, int required_role)
+{
+    if (uid <= 0) return SS_AUTH_REQUIRED;
+    if (gid <= 0) return SS_BAD_REQUEST;
+
+    int role = group_role(uid, gid);
+    if (role < 0) return "ERR|NOT_FOUND\n";
+    if (role < required_role) return "ERR|FORBIDDEN\n";
+    return NULL;
+}
+
 int cmd_create_group(int sock, int uid, const char *name)
 {
-    if (uid <= 0) return reply(sock, "ERR|AUTH_REQUIRED\n");
+    if (uid <= 0) return reply(sock, SS_AUTH_REQUIRED);
 
     int id = group_create(uid, name);
-    if (id < 0) return result(sock, id, "");
-
-    char buf[100];
-    snprintf(buf, sizeof(buf), "OK|GROUP|%d\n", id);
-    return reply(sock, buf);
+    if (id < 0) return group_error(sock, id);
+    char line[64];
+    snprintf(line, sizeof(line), "OK|GROUP|%d\n", id);
+    return reply(sock, line);
 }
 
-// Xem cac nhom da tham gia
 int cmd_list_groups(int sock, int uid)
 {
-    if (uid <= 0) return reply(sock, "ERR|AUTH_REQUIRED\n");
+    if (uid <= 0) return reply(sock, SS_AUTH_REQUIRED);
 
     GroupInfo groups[100];
-    int n = group_list(uid, groups, 100);
-    if (n < 0) return result(sock, n, "");
+    int count = group_list(uid, groups, (int)(sizeof(groups) / sizeof(groups[0])));
+    if (count < 0) return group_error(sock, count);
 
-    char buf[128];
-    snprintf(buf, sizeof(buf), "OK|GROUPS|%d\n", n);
-    if (reply(sock, buf) < 0) return -1;
-
-    for (int i = 0; i < n; i++) {
-        snprintf(buf, sizeof(buf), "GROUP|%d|%s|%d\n",
+    char line[MAX_LINE];
+    snprintf(line, sizeof(line), "OK|GROUPS|%d\n", count);
+    if (reply(sock, line) < 0) return -1;
+    for (int i = 0; i < count; i++) {
+        snprintf(line, sizeof(line), "GROUP|%d|%s|%d\n",
                  groups[i].id, groups[i].name, groups[i].role);
-        if (reply(sock, buf) < 0) return -1;
+        if (reply(sock, line) < 0) return -1;
     }
     return reply(sock, "END\n");
 }
 
-// Xin tham gia nhom
 int cmd_request_join(int sock, int uid, int gid)
 {
-    if (uid <= 0) return reply(sock, "ERR|AUTH_REQUIRED\n");
-    if (gid <= 0) return reply(sock, "ERR|BAD_REQUEST\n");
-    if (group_role(uid, gid) < 0)
-        return reply(sock, "ERR|NOT_FOUND\n");
+    const char *error = access_error(uid, gid, 0);
+    if (error != NULL) return reply(sock, error);
 
-    return result(sock, group_request_join(uid, gid),
-                  "OK|REQUEST_JOIN\n");
+    int result = group_request_join(uid, gid);
+    if (result < 0) return group_error(sock, result);
+    return reply(sock, "OK|REQUESTED\n");
 }
 
-// Truong nhom duyet yeu cau
-int cmd_approve_join(int sock, int uid, int gid, int user_id)
-{
-    if (uid <= 0) return reply(sock, "ERR|AUTH_REQUIRED\n");
-    if (gid <= 0 || user_id <= 0)
-        return reply(sock, "ERR|BAD_REQUEST\n");
-
-    int role = group_role(uid, gid);
-    if (role < 0) return reply(sock, "ERR|NOT_FOUND\n");
-    if (role != 2) return reply(sock, "ERR|FORBIDDEN\n");
-
-    return result(sock, group_approve_join(uid, gid, user_id),
-                  "OK|APPROVE_JOIN\n");
-}
-
-// Xem danh sach yeu cau cho duyet
 int cmd_list_requests(int sock, int uid, int gid)
 {
-    if (uid <= 0) return reply(sock, "ERR|AUTH_REQUIRED\n");
-    if (gid <= 0) return reply(sock, "ERR|BAD_REQUEST\n");
+    const char *error = access_error(uid, gid, 2);
+    if (error != NULL) return reply(sock, error);
 
-    int role = group_role(uid, gid);
-    if (role < 0) return reply(sock, "ERR|NOT_FOUND\n");
-    if (role != 2) return reply(sock, "ERR|FORBIDDEN\n");
+    int ids[1000];
+    int count = group_list_requests(uid, gid, ids, (int)(sizeof(ids) / sizeof(ids[0])));
+    if (count < 0) return group_error(sock, count);
 
-    int users[1000];
-    int n = group_list_requests(uid, gid, users, 1000);
-    if (n < 0) return result(sock, n, "");
-
-    char buf[80];
-    snprintf(buf, sizeof(buf), "OK|REQUESTS|%d\n", n);
-    if (reply(sock, buf) < 0) return -1;
-
-    for (int i = 0; i < n; i++) {
-        snprintf(buf, sizeof(buf), "USER|%d\n", users[i]);
-        if (reply(sock, buf) < 0) return -1;
+    char line[64];
+    snprintf(line, sizeof(line), "OK|REQUESTS|%d\n", count);
+    if (reply(sock, line) < 0) return -1;
+    for (int i = 0; i < count; i++) {
+        snprintf(line, sizeof(line), "REQUEST|%d\n", ids[i]);
+        if (reply(sock, line) < 0) return -1;
     }
     return reply(sock, "END\n");
 }
 
-// Xem thanh vien cua nhom
+int cmd_approve_join(int sock, int uid, int gid, int target_uid)
+{
+    const char *error = access_error(uid, gid, 2);
+    if (error != NULL) return reply(sock, error);
+    if (target_uid <= 0) return reply(sock, SS_BAD_REQUEST);
+
+    int result = group_approve_join(uid, gid, target_uid);
+    if (result == SS_ERR_INVALID) return reply(sock, "ERR|NOT_FOUND\n");
+    if (result < 0) return group_error(sock, result);
+    return reply(sock, "OK|APPROVED\n");
+}
+
 int cmd_list_members(int sock, int uid, int gid)
 {
-    if (uid <= 0) return reply(sock, "ERR|AUTH_REQUIRED\n");
-    if (gid <= 0) return reply(sock, "ERR|BAD_REQUEST\n");
+    const char *error = access_error(uid, gid, 1);
+    if (error != NULL) return reply(sock, error);
 
-    int role = group_role(uid, gid);
-    if (role < 0) return reply(sock, "ERR|NOT_FOUND\n");
-    if (role == 0) return reply(sock, "ERR|FORBIDDEN\n");
+    /* Groups stores up to 1000 joined members, plus the owner. */
+    int ids[1001];
+    int count = group_list_members(gid, ids, (int)(sizeof(ids) / sizeof(ids[0])));
+    if (count < 0) return group_error(sock, count);
 
-    int users[1001];
-    int n = group_list_members(gid, users, 1001);
-    if (n < 0) return result(sock, n, "");
-
-    char buf[80];
-    snprintf(buf, sizeof(buf), "OK|MEMBERS|%d\n", n);
-    if (reply(sock, buf) < 0) return -1;
-
-    for (int i = 0; i < n; i++) {
-        snprintf(buf, sizeof(buf), "USER|%d\n", users[i]);
-        if (reply(sock, buf) < 0) return -1;
+    char line[64];
+    snprintf(line, sizeof(line), "OK|MEMBERS|%d\n", count);
+    if (reply(sock, line) < 0) return -1;
+    for (int i = 0; i < count; i++) {
+        snprintf(line, sizeof(line), "MEMBER|%d|%d\n", ids[i], group_role(ids[i], gid));
+        if (reply(sock, line) < 0) return -1;
     }
     return reply(sock, "END\n");
 }
