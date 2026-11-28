@@ -67,6 +67,23 @@ int main(void)
     assert(pending[0] == 4);
     assert(group_role(3, 1) == 1);
 
+
+    GroupInfo list[10];
+
+    // Chủ nhóm thấy nhóm của mình
+    assert(group_list(1, list, 10) == 1);
+    assert(list[0].id == 1);
+    assert(list[0].role == 2);
+
+    // Thành viên đã được duyệt cũng thấy nhóm
+    assert(group_list(2, list, 10) == 1);
+    assert(list[0].id == 1);
+    assert(list[0].role == 1);
+
+    // Người chưa được duyệt không thấy nhóm
+    assert(group_list(4, list, 10) == 0);
+
+
     printf("GROUP MEMBERSHIP TEST PASS\n");
     return 0;
 }
