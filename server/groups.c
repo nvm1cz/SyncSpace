@@ -126,6 +126,7 @@ int group_role(int user_id, int group_id)
 }
 
 
+
 int group_list(int user_id, GroupInfo *out, int capacity)
 {
     if (user_id <= 0 || capacity < 0 ||
@@ -133,13 +134,26 @@ int group_list(int user_id, GroupInfo *out, int capacity)
         return SS_ERR_INVALID;
 
     pthread_mutex_lock(&group_lock);
-
     int count = 0;
 
     for (int i = 0; i < group_count; i++)
     {
-        if (groups[i].owner_id != user_id)
-            continue;
+        int role = (groups[i].owner_id == user_id) ? 2 : 0;
+
+        if (role == 0)
+        {
+            for (int j = 0; j < member_count; j++)
+            {
+                if (members[j].group_id == groups[i].id &&
+                    members[j].user_id == user_id)
+                {
+                    role = 1;
+                    break;
+                }
+            }
+        }
+
+        if (role == 0) continue;
 
         if (count >= capacity)
         {
@@ -149,7 +163,7 @@ int group_list(int user_id, GroupInfo *out, int capacity)
 
         out[count].id = groups[i].id;
         strcpy(out[count].name, groups[i].name);
-        out[count].role = 2;
+        out[count].role = role;
         count++;
     }
 
